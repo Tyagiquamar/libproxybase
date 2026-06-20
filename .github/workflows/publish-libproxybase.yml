@@ -20,9 +20,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Verify package
-        run: cargo package --manifest-path libproxybase/Cargo.toml --allow-dirty
+        run: cargo package --manifest-path Cargo.toml --allow-dirty
 
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --manifest-path libproxybase/Cargo.toml
+        run: cargo publish --manifest-path Cargo.toml
