@@ -2,6 +2,12 @@
 name = "libproxybase"
 version = "0.1.0"
 edition = "2021"
+description = "Core engine library for ProxyBase networking, market connectivity, proxying, and telemetry"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/proxybase/proxybase2"
+keywords = ["proxy", "socks5", "networking", "telemetry", "market"]
+categories = ["network-programming", "asynchronous"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -13,7 +19,6 @@ bip39 = { version = "2", features = ["rand"] }
 aes-gcm = "0.10"
 argon2 = "0.5"
 governor = "0.7"
-fast-socks5 = { path = "../proxybase2-backend/fast-socks5" }
 sysinfo = "0.31"
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
