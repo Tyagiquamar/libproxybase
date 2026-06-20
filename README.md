@@ -15,7 +15,7 @@ It provides reusable modules for:
 
 ```toml
 [dependencies]
-libproxybase = "0.1"
+libproxybase = "0.4.0"
 ```
 
 ## Notes
