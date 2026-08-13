@@ -22,6 +22,16 @@ impl WalletManager {
         })
     }
 
+    fn keyfile_path(&self) -> PathBuf {
+        self.data_dir.join("wallet").join("keyfile.enc")
+    }
+
+    /// True when an encrypted keyfile exists on disk, regardless of whether
+    /// it can be decrypted without the user's password.
+    pub fn exists(&self) -> bool {
+        self.keyfile_path().exists()
+    }
+
     /// Generate a new wallet (12-word mnemonic), encrypt keyfile, return mnemonic.
     pub fn create(&mut self, password: &str) -> Result<String> {
         let mnemonic = mnemonic::generate_mnemonic(12)?;
@@ -29,8 +39,7 @@ impl WalletManager {
         let seed = mnemonic::mnemonic_to_seed(&phrase, "")?;
         let (sk, pk) = keypair::seed_to_keypair(&seed)?;
 
-        let keyfile_path = self.data_dir.join("wallet").join("keyfile.enc");
-        keystore::encrypt_and_save(&sk, password, &keyfile_path)?;
+        keystore::encrypt_and_save(&sk, password, &self.keyfile_path())?;
 
         self.signing_key = Some(sk);
         let address = keypair::public_key_to_address(&pk)?;
@@ -45,8 +54,7 @@ impl WalletManager {
         let seed = mnemonic::mnemonic_to_seed(phrase, "")?;
         let (sk, pk) = keypair::seed_to_keypair(&seed)?;
 
-        let keyfile_path = self.data_dir.join("wallet").join("keyfile.enc");
-        keystore::encrypt_and_save(&sk, password, &keyfile_path)?;
+        keystore::encrypt_and_save(&sk, password, &self.keyfile_path())?;
 
         self.signing_key = Some(sk);
         self.wallet_address = Some(keypair::public_key_to_address(&pk)?);
@@ -56,13 +64,23 @@ impl WalletManager {
 
     /// Load wallet from encrypted keyfile.
     pub fn load(&mut self, password: &str) -> Result<()> {
-        let keyfile_path = self.data_dir.join("wallet").join("keyfile.enc");
-        let (sk, pk) = keystore::load_and_decrypt(password, &keyfile_path)?;
+        let (sk, pk) = keystore::load_and_decrypt(password, &self.keyfile_path())?;
 
         self.signing_key = Some(sk);
         self.wallet_address = Some(keypair::public_key_to_address(&pk)?);
 
         Ok(())
+    }
+
+    /// Try each candidate password in order; the first one that decrypts the
+    /// keyfile wins. Fails only when none of them work.
+    pub fn try_load(&mut self, passwords: &[&str]) -> Result<()> {
+        for pw in passwords {
+            if self.load(pw).is_ok() {
+                return Ok(());
+            }
+        }
+        anyhow::bail!("Wallet could not be decrypted with any of the provided passwords")
     }
 
     /// Sign a message with the loaded wallet key.
@@ -128,5 +146,49 @@ mod tests {
         wm2.import(&mnemonic, "new-pw").unwrap();
         // Different passwords, same mnemonic → same address
         assert_eq!(wm.address(), wm2.address());
+    }
+
+    #[test]
+    fn test_exists_flags_wallet_presence_without_decrypting() {
+        let dir = tempdir().unwrap();
+        let mut wm = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        assert!(!wm.exists(), "no keyfile yet");
+
+        // Password-protected wallet must still be reported as present —
+        // callers (GUI wallet_info) must not need the password to know
+        // a wallet exists.
+        wm.create("secret").unwrap();
+        assert!(wm.exists());
+
+        let wm2 = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        assert!(wm2.exists(), "fresh manager must see the keyfile on disk");
+    }
+
+    #[test]
+    fn test_try_load_password_wallet() {
+        let dir = tempdir().unwrap();
+        let mut wm = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        wm.create("secret").unwrap();
+        let addr = wm.address().unwrap().to_string();
+
+        // Wrong-only candidates fail
+        let mut wm2 = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        assert!(wm2.try_load(&["wrong", "nope"]).is_err());
+
+        // Correct candidate anywhere in the list succeeds
+        let mut wm3 = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        wm3.try_load(&["wrong", "secret"]).unwrap();
+        assert_eq!(wm3.address().unwrap(), addr);
+    }
+
+    #[test]
+    fn test_try_load_empty_password_wallet() {
+        let dir = tempdir().unwrap();
+        let mut wm = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        wm.create("").unwrap();
+
+        let mut wm2 = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        wm2.try_load(&[""]).unwrap();
+        assert!(wm2.is_loaded());
     }
 }
