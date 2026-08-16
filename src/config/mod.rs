@@ -35,6 +35,14 @@ pub struct BuyerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SellerConfig {
     pub accept_trial_pool: bool,
+    /// Compensation mode: "standard" (earn seller credits) or "volunteer"
+    /// (donate bandwidth, settle with 0 seller share).
+    #[serde(default = "default_node_type")]
+    pub node_type: String,
+}
+
+fn default_node_type() -> String {
+    "standard".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +108,7 @@ impl Config {
             },
             seller: SellerConfig {
                 accept_trial_pool: true,
+                node_type: "standard".to_string(),
             },
             limits: LimitsConfig {
                 max_bandwidth_bytes_per_day: 2_000_000_000,
@@ -137,6 +146,7 @@ mod tests {
         assert_eq!(config.market.role, "buyer");
         assert_eq!(config.buyer.default_country, "US");
         assert_eq!(config.limits.max_concurrent_streams, 200);
+        assert_eq!(config.seller.node_type, "standard");
     }
 
     #[test]
@@ -147,5 +157,45 @@ mod tests {
         config.save(&path).unwrap();
         let loaded = Config::load(&path).unwrap();
         assert_eq!(loaded.market.backend_url, config.market.backend_url);
+        assert_eq!(loaded.seller.node_type, "standard");
+    }
+
+    #[test]
+    fn test_seller_config_node_type_defaults_when_missing() {
+        // Configs written before the node_type field existed must still parse.
+        let toml_str = r#"
+[wallet]
+data_dir = "/tmp/pb"
+
+[market]
+backend_url = "http://localhost:8080"
+role = "buyer"
+
+[buyer]
+default_country = "US"
+default_proxy_category = "residential"
+
+[seller]
+accept_trial_pool = true
+
+[limits]
+max_bandwidth_bytes_per_day = 2000000000
+max_speed_bytes_per_sec = 5000000
+max_concurrent_streams = 200
+
+[pool]
+max_connections_per_host = 16
+
+[engine]
+pin_to_core = false
+log_level = "info"
+"#;
+        let config: Config = toml::from_str(toml_str).expect("legacy config must parse");
+        assert_eq!(config.seller.node_type, "standard");
+
+        // Explicit volunteer value is preserved
+        let toml_volunteer = toml_str.replace("accept_trial_pool = true", "accept_trial_pool = true\nnode_type = \"volunteer\"");
+        let config: Config = toml::from_str(&toml_volunteer).expect("volunteer config must parse");
+        assert_eq!(config.seller.node_type, "volunteer");
     }
 }

@@ -206,9 +206,22 @@ impl MarketClient {
         Ok(())
     }
 
-    /// Register as a seller.
+    /// Register as a seller (standard compensation mode).
     pub async fn register_seller(&self) -> Result<serde_json::Value> {
-        self.post("/v2/seller/register", serde_json::json!({})).await
+        self.register_seller_with_node_type(None).await
+    }
+
+    /// Register as a seller with an explicit node type:
+    /// "standard" (default) or "volunteer" (donate bandwidth, no earnings).
+    pub async fn register_seller_with_node_type(
+        &self,
+        node_type: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        self.post(
+            "/v2/seller/register",
+            serde_json::json!({ "node_type": node_type.unwrap_or("standard") }),
+        )
+        .await
     }
 
     /// Get seller status.
