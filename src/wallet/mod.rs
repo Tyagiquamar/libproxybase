@@ -1,3 +1,4 @@
+pub mod hd;
 pub mod keystore;
 pub mod keypair;
 pub mod mnemonic;
@@ -53,6 +54,26 @@ impl WalletManager {
     pub fn import(&mut self, phrase: &str, password: &str) -> Result<()> {
         let seed = mnemonic::mnemonic_to_seed(phrase, "")?;
         let (sk, pk) = keypair::seed_to_keypair(&seed)?;
+
+        keystore::encrypt_and_save(&sk, password, &self.keyfile_path())?;
+
+        self.signing_key = Some(sk);
+        self.wallet_address = Some(keypair::public_key_to_address(&pk)?);
+
+        Ok(())
+    }
+
+    /// Import from a master mnemonic with a specific BIP-44 HD child index:
+    /// `m/44'/60'/0'/0/{index}`. Each index yields a distinct wallet address,
+    /// so a fleet of nodes can share one master phrase without collisions.
+    ///
+    /// NOTE: this derives keys differently from [`Self::import`]/[`Self::create`]
+    /// (which use the raw seed prefix), so the same phrase produces different
+    /// addresses across the two methods. Both are intentional; `import_hd` is
+    /// the standard for new fleet deployments.
+    pub fn import_hd(&mut self, mnemonic_phrase: &str, index: u32, password: &str) -> Result<()> {
+        let seed = mnemonic::mnemonic_to_seed(mnemonic_phrase, "")?;
+        let (sk, pk) = hd::derive_bip44_keypair(&seed, index)?;
 
         keystore::encrypt_and_save(&sk, password, &self.keyfile_path())?;
 
@@ -146,6 +167,48 @@ mod tests {
         wm2.import(&mnemonic, "new-pw").unwrap();
         // Different passwords, same mnemonic → same address
         assert_eq!(wm.address(), wm2.address());
+    }
+
+    #[test]
+    fn test_import_hd_matches_direct_derivation() {
+        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let dir = tempdir().unwrap();
+
+        let mut wm = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        wm.import_hd(phrase, 3, "pw").unwrap();
+
+        // Cross-check against the raw hd/keypair modules.
+        let seed = mnemonic::mnemonic_to_seed(phrase, "").unwrap();
+        let (_sk, vk) = hd::derive_bip44_keypair(&seed, 3).unwrap();
+        let expected = keypair::public_key_to_address(&vk).unwrap();
+        assert_eq!(wm.address().unwrap(), expected);
+
+        // Reload from the encrypted keyfile yields the same identity.
+        let mut wm2 = WalletManager::new(dir.path().to_path_buf()).unwrap();
+        wm2.load("pw").unwrap();
+        assert_eq!(wm2.address().unwrap(), expected);
+    }
+
+    #[test]
+    fn test_import_hd_distinct_indices() {
+        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let mut wm0 = WalletManager::new(tempdir().unwrap().path().to_path_buf()).unwrap();
+        wm0.import_hd(phrase, 0, "pw").unwrap();
+        let mut wm1 = WalletManager::new(tempdir().unwrap().path().to_path_buf()).unwrap();
+        wm1.import_hd(phrase, 1, "pw").unwrap();
+        assert_ne!(wm0.address(), wm1.address());
+    }
+
+    #[test]
+    fn test_import_hd_differs_from_legacy_import() {
+        // Legacy import uses the raw seed prefix; HD import uses BIP-44.
+        // Same phrase, intentionally different addresses.
+        let phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let mut legacy = WalletManager::new(tempdir().unwrap().path().to_path_buf()).unwrap();
+        legacy.import(phrase, "pw").unwrap();
+        let mut hd = WalletManager::new(tempdir().unwrap().path().to_path_buf()).unwrap();
+        hd.import_hd(phrase, 0, "pw").unwrap();
+        assert_ne!(legacy.address(), hd.address());
     }
 
     #[test]

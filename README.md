@@ -4,7 +4,9 @@
 
 It provides reusable modules for:
 - configuration loading and watching
-- wallet and key management
+- wallet and key management (BIP-39 mnemonics, encrypted keystores,
+  BIP-32/BIP-44 HD child derivation at `m/44'/60'/0'/0/{index}` via
+  `wallet::hd` / `WalletManager::import_hd`)
 - market authentication and session APIs
 - network transport, pooling, and reconnect logic
 - SOCKS5/local proxy components

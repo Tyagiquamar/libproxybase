@@ -16,6 +16,8 @@ yamux = "0.13"
 rustls = "0.23"
 k256 = { version = "0.13", features = ["ecdsa"] }
 bip39 = { version = "2", features = ["rand"] }
+hmac = "0.12"
+sha2 = "0.10"
 aes-gcm = "0.10"
 argon2 = "0.5"
 governor = "0.7"
