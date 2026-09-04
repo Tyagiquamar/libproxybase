@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod balances;
 pub mod catalog;
+pub mod countries;
 pub mod deposits;
 pub mod reservations;
 pub mod seller_state;
